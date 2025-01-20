@@ -8,5 +8,7 @@ let isValid = [body('title').trim().isLength({ min: 5 }), body('content').trim()
 router.get('/posts', routesControllers.getPosts);
 router.post('/post', isValid, routesControllers.postPost);
 router.get('/post/:postId', routesControllers.getPost);
+router.put('/post/:postId', isValid, routesControllers.updatePost);
+router.delete('/post/:postId', routesControllers.deletePost);
 
 export default router;

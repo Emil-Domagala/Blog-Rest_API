@@ -1,5 +1,6 @@
 import express from 'express';
 import feedRoutes from './routes/feed.js';
+import authRoutes from './routes/auth.js';
 import bodyParser from 'body-parser';
 import mongoose from 'mongoose';
 import path from 'node:path';
@@ -43,6 +44,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/feed', feedRoutes);
+app.use('/auth', authRoutes);
 
 app.use((error, req, res, next) => {
   console.log(error);
