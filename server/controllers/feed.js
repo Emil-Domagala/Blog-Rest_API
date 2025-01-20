@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { validationResult } from 'express-validator';
 import { PostModel as Post } from '../models/post.js';
 import { UserModel as User } from '../models/user.js';
+import { socketConfig as io } from '../socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,8 @@ export const getPosts = async (req, res, next) => {
     const totalItems = await Post.find().countDocuments();
 
     const posts = await Post.find()
+      .populate('creator')
+      .sort({ createdAt: -1 })
       .skip((currentPage - 1) * perPage)
       .limit(perPage);
 
@@ -67,6 +70,10 @@ export const postPost = async (req, res, next) => {
     const user = await User.findById(req.userId);
     user.posts.push(post);
     const creator = await user.save();
+    io.getIo().emit('posts', {
+      action: 'create',
+      post: { ...postData._doc, creator: { _id: req.userId, name: user.name } },
+    });
     res.status(201).json({
       message: 'Post created',
       post: postData,
@@ -114,13 +121,13 @@ export const updatePost = async (req, res, next) => {
       throw error;
     }
 
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate('creator');
     if (!post) {
       const error = new Error('Could not find post.');
       error.statusCode = 404;
       throw error;
     }
-    if (post.creator.toString !== req.userId) {
+    if (post.creator._id.toString() !== req.userId) {
       const error = new Error('Not authorized!');
       error.statusCode = 403;
       throw error;
@@ -130,6 +137,11 @@ export const updatePost = async (req, res, next) => {
     }
     post.set({ imageUrl, title, content });
     const result = await post.save();
+
+    io.getIo().emit('posts', {
+      action: 'update',
+      post: result,
+    });
 
     return res.status(200).json({ message: 'post updated', post: result });
   } catch (err) {
@@ -158,6 +170,10 @@ export const deletePost = async (req, res, next) => {
     await user.save();
     await Post.findByIdAndDelete(postId);
     deleteOldImage(post.imageUrl);
+    io.getIo().emit('posts', {
+      action: 'delete',
+      post: postId,
+    });
     return res.status(200).json({ message: 'post deleted successfully' });
   } catch (err) {
     catchError(err, next);

@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import multer from 'multer';
+import { Server as SocketServer } from 'socket.io';
+import { socketConfig } from './socket.js';
 
 dotenv.config();
 
@@ -57,7 +59,7 @@ app.use((error, req, res, next) => {
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log('CONNECTED');
-    app.listen(process.env.SERVER_PORT);
+    const server = app.listen(process.env.SERVER_PORT);
+    const io = socketConfig.init(server);
   })
   .catch((err) => console.log(err));
