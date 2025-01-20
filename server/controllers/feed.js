@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'url';
 import { validationResult } from 'express-validator';
 import { PostModel as Post } from '../models/post.js';
+import { UserModel as User } from '../models/user.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,33 +39,38 @@ export const getPosts = async (req, res, next) => {
 };
 
 export const postPost = async (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    const error = new Error('Validation failed, entred data is incorrect');
-    error.statusCode = 422;
-    throw error;
-  }
-  if (!req.file) {
-    const error = new Error('No image provided');
-    error.statusCode = 422;
-    throw error;
-  }
-
-  const imageUrl = req.file.path;
-  const title = req.body.title;
-  const content = req.body.content;
-
-  const post = new Post({
-    title,
-    content,
-    creator: { name: 'Emil' },
-    imageUrl,
-  });
   try {
-    const result = await post.save();
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const error = new Error('Validation failed, entred data is incorrect');
+      error.statusCode = 422;
+      throw error;
+    }
+    if (!req.file) {
+      const error = new Error('No image provided');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const imageUrl = req.file.path;
+    const title = req.body.title;
+    const content = req.body.content;
+
+    const post = new Post({
+      title,
+      content,
+      creator: req.userId,
+      imageUrl,
+    });
+
+    const postData = await post.save();
+    const user = await User.findById(req.userId);
+    user.posts.push(post);
+    const creator = await user.save();
     res.status(201).json({
       message: 'Post created',
-      post: result,
+      post: postData,
+      creator: { _id: creator._id, name: creator.name },
     });
   } catch (err) {
     catchError(err, next);
@@ -87,30 +93,36 @@ export const getPost = async (req, res, next) => {
 };
 
 export const updatePost = async (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    const error = new Error('Validation failed, entred data is incorrect');
-    error.statusCode = 422;
-    throw error;
-  }
-
-  let imageUrl = req.body.image;
-  const title = req.body.title;
-  const content = req.body.content;
-  const postId = req.params.postId;
-  if (req.file) {
-    imageUrl = req.file.path;
-  }
-  if (!imageUrl) {
-    const error = new Error('No file picked');
-    error.statusCode = 422;
-    throw error;
-  }
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const error = new Error('Validation failed, entred data is incorrect');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    let imageUrl = req.body.image;
+    const title = req.body.title;
+    const content = req.body.content;
+    const postId = req.params.postId;
+    if (req.file) {
+      imageUrl = req.file.path;
+    }
+    if (!imageUrl) {
+      const error = new Error('No file picked');
+      error.statusCode = 422;
+      throw error;
+    }
+
     const post = await Post.findById(postId);
     if (!post) {
       const error = new Error('Could not find post.');
       error.statusCode = 404;
+      throw error;
+    }
+    if (post.creator.toString !== req.userId) {
+      const error = new Error('Not authorized!');
+      error.statusCode = 403;
       throw error;
     }
     if (imageUrl !== post.imageUrl) {
@@ -135,8 +147,17 @@ export const deletePost = async (req, res, next) => {
       error.statusCode = 404;
       throw error;
     }
-    deleteOldImage(post.imageUrl);
+    if (post.creator.toString() !== req.userId) {
+      const error = new Error('Not authorized!');
+      error.statusCode = 403;
+      throw error;
+    }
+    const user = await User.findById(req.userId);
+
+    user.posts.pull(postId);
+    await user.save();
     await Post.findByIdAndDelete(postId);
+    deleteOldImage(post.imageUrl);
     return res.status(200).json({ message: 'post deleted successfully' });
   } catch (err) {
     catchError(err, next);
